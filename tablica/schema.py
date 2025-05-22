@@ -1,4 +1,5 @@
 import graphene
+from django.db.models import Count, Avg
 from graphene_django import DjangoObjectType
 from .models import Project, Task, Comment, Attachment
 from django.contrib.auth.models import User
@@ -36,8 +37,18 @@ class Query(graphene.ObjectType):
     all_tasks = graphene.List(TaskType)
     task = graphene.Field(TaskType, id=graphene.Int())
 
+    active_projects = graphene.List(ProjectType)
+    inactive_projects = graphene.List(ProjectType)
+
+    recent_tasks = graphene.List(TaskType)
+    tasks_by_status = graphene.List(TaskType, status=graphene.String(required=True))
+    tasks_by_user = graphene.List(TaskType, user_id=graphene.Int(required=True))
+    task_status_summary = graphene.List(graphene.JSONString)
+    average_tasks_per_project = graphene.Float()
+
     all_comments = graphene.List(CommentType)
     comment = graphene.Field(CommentType, id=graphene.Int())
+    recent_comments = graphene.List(CommentType)
 
     all_attachments = graphene.List(AttachmentType)
     attachment = graphene.Field(AttachmentType, id=graphene.Int())
@@ -65,6 +76,31 @@ class Query(graphene.ObjectType):
 
     def resolve_attachment(self, info, id):
         return Attachment.objects.get(pk=id)
+
+    def resolve_active_projects(self, info):
+        return Project.objects.filter(is_active=True)
+
+    def resolve_inactive_projects(self, info):
+        return Project.objects.filter(is_active=False)
+
+    def resolve_recent_tasks(self, info):
+        return Task.objects.order_by('-created_at')[:5]
+
+    def resolve_tasks_by_status(self, info, status):
+        return Task.objects.filter(status=status)
+
+    def resolve_tasks_by_user(self, info, user_id):
+        return Task.objects.filter(assigned_to__id=user_id)
+
+    def resolve_task_status_summary(self, info):
+        return list(Task.objects.values('status').annotate(count=Count('id')))
+
+    def resolve_average_tasks_per_project(self, info):
+        result = Project.objects.annotate(task_count=Count('tasks')).aggregate(avg=Avg('task_count'))
+        return result["avg"]
+
+    def resolve_recent_comments(self, info):
+        return Comment.objects.order_by('-created_at')[:5]
 
 class CreateProject(graphene.Mutation):
     class Arguments:
